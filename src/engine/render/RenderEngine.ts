@@ -14,12 +14,15 @@ export class RenderEngine {
   private postScene = new THREE.Scene();
   private postCam = new THREE.OrthographicCamera(-1, 1, 1, -1, 0, 1);
   private postMat: THREE.ShaderMaterial;
+  private sceneRoot = new THREE.Group();
   quality: RenderQuality = { resolutionScale: 1, postEnabled: true, bloom: 0.2, vignette: 0.3, grain: 0.03, chroma: 0.002, feedback: 0.82 };
 
   constructor(container: HTMLElement) {
     this.container = container;
     this.renderer = new THREE.WebGLRenderer({ antialias: true, preserveDrawingBuffer: true });
+    this.renderer.toneMappingExposure = 1;
     container.appendChild(this.renderer.domElement);
+    this.scene.add(this.sceneRoot);
     this.rtA = new THREE.WebGLRenderTarget(16, 16);
     this.rtB = new THREE.WebGLRenderTarget(16, 16);
     this.postMat = new THREE.ShaderMaterial({
@@ -31,21 +34,24 @@ export class RenderEngine {
       vec3 col=vec3(texture2D(tCurrent,vUv+off).r,texture2D(tCurrent,vUv).g,texture2D(tCurrent,vUv-off).b);
       vec3 prev=texture2D(tPrev,vUv).rgb;col=mix(col,prev,uFeedback);col*=1.0-uVignette*d*2.0;col+=(hash(vUv)-0.5)*uGrain;gl_FragColor=vec4(col,1.);}`
     });
-    this.postScene.add(new THREE.Mesh(new THREE.PlaneGeometry(2, 2), this.postMat));
+    this.postCam.position.z = 1;
+    const postQuad = new THREE.Mesh(new THREE.PlaneGeometry(2, 2), this.postMat);
+    postQuad.frustumCulled = false;
+    this.postScene.add(postQuad);
     this.resize();
     window.addEventListener('resize', () => this.resize());
   }
 
   switchScene(next: ScenePlugin) {
     if (this.active) this.active.dispose(this.makeCtx());
-    this.scene.clear();
+    this.sceneRoot.clear();
     this.active = next;
     next.init(this.makeCtx());
   }
 
   makeCtx(): SceneContext {
     const size = this.renderer.getSize(new THREE.Vector2());
-    return { renderer: this.renderer, threeScene: this.scene, camera: this.camera, gl: this.renderer.getContext(), size: { width: size.x, height: size.y } };
+    return { renderer: this.renderer, threeScene: this.sceneRoot, camera: this.camera, gl: this.renderer.getContext(), size: { width: size.x, height: size.y } };
   }
 
   render(update: () => void, time: number) {
